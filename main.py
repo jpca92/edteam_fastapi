@@ -1,7 +1,10 @@
-from typing import Optional
+from typing import Optional, List
 from urllib import response
 
+from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, status
+
+from developers import developers
 
 app = FastAPI()
 
@@ -101,3 +104,54 @@ def division(numero1: int, numero2: int):
         resultado = numero1 / numero2 if numero2 != 0 else 0
         response.status_code = status.HTTP_200_OK
     return {"resultado": resultado}
+
+
+# Capitulo 3
+@app.get("/developers")
+def get_developers():
+    return developers
+
+@app.get("/developers/{id}")
+def get_developer(id: int):
+    developer = next((dev for dev in developers if dev["id"] == id), None)
+    if developer is None:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    return developer
+
+@app.get("/developers/{id}/skills")
+def get_developer_skills(id: int):
+    developer = next((dev for dev in developers if dev["id"] == id), None)
+    if developer is None:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    return developer["skills"]
+
+@app.get("/developers/{id}/experience")
+def get_developer_experience(id: int):
+    developer = next((dev for dev in developers if dev["id"] == id), None)
+    if developer is None:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    return developer["experience"]
+
+@app.get("/developers/{id}/languages")
+def get_developer_languages(id: int):
+    developer = next((dev for dev in developers if dev["id"] == id), None)
+    if developer is None:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    return developer["languages"]
+
+class Developer(BaseModel):
+    id: int
+    name: str
+    country: str
+    age: int
+    skills: List[dict]
+    experience: List[dict]
+    languages: List[dict]
+
+
+@app.post("/developers")
+def create_developer(developer: Developer):
+    new_developer = developer.model_dump()
+    developers.append(new_developer)
+
+    return new_developer
