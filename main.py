@@ -1,13 +1,16 @@
-from typing import Optional, List
+from typing import Optional
 from urllib import response
 
 from models.Developer import Developer
-from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, status
 
-from developers import developers
+from developers_data import developers_data
 
 app = FastAPI()
+
+developers: list[Developer] = [
+    Developer.model_validate(developer) for developer in developers_data
+]
 
 users = [
     {"id":1,"nombre":"Juan", "apellido":"Perez", "edad": 30},
@@ -110,52 +113,76 @@ def division(numero1: int, numero2: int):
 # Capitulo 3
 @app.get("/developers")
 def get_developers():
-    return developers
+    return {
+        "developers": developers,
+        "total_developers": len(developers),
+    }
 
-@app.get("/developers/{id}")
-def get_developer(id: int):
-    developer = next((dev for dev in developers if dev["id"] == id), None)
+@app.get("/developers/{developer_id}")
+def get_developer(developer_id: int):
+    developer = next((dev for dev in developers if dev.id == developer_id), None)
     if developer is None:
         raise HTTPException(status_code=404, detail="Developer not found")
     return developer
 
-@app.get("/developers/{id}/skills")
-def get_developer_skills(id: int):
-    developer = next((dev for dev in developers if dev["id"] == id), None)
+@app.get("/developers/{developer_id}/skills")
+def get_developer_skills(developer_id: int):
+    developer = next((dev for dev in developers if dev.id == developer_id), None)
     if developer is None:
         raise HTTPException(status_code=404, detail="Developer not found")
-    return developer["skills"]
+    return developer.skills
 
-@app.get("/developers/{id}/experience")
-def get_developer_experience(id: int):
-    developer = next((dev for dev in developers if dev["id"] == id), None)
+@app.get("/developers/{developer_id}/experience")
+def get_developer_experience(developer_id: int):
+    developer = next((dev for dev in developers if dev.id == developer_id), None)
     if developer is None:
         raise HTTPException(status_code=404, detail="Developer not found")
-    return developer["experience"]
+    return developer.experience
 
-@app.get("/developers/{id}/languages")
-def get_developer_languages(id: int):
-    developer = next((dev for dev in developers if dev["id"] == id), None)
+@app.get("/developers/{developer_id}/languages")
+def get_developer_languages(developer_id: int):
+    developer = next((dev for dev in developers if dev.id == developer_id), None)
     if developer is None:
         raise HTTPException(status_code=404, detail="Developer not found")
-    return developer["languages"]
+    return developer.languages
 
 
 # Post method to create a new developer
 
 @app.post("/developers")
 def create_developer(developer: Developer):
-    new_developer = developer.model_dump()
-    developers.append(new_developer)
+    developers.append(developer)
 
-    return new_developer
+    return {
+        "developer": developer,
+        "total_developers": len(developers),
+    }
 
 
 # Delete method to delete a developer by id
-@app.delete("/developers/{id}")
-def delete_developer(id: int):
-    developer = next((dev for dev in developers if dev["id"] == id), None)
+@app.delete("/developers/{developer_id}")
+def delete_developer(developer_id: int):
+    developer = next((dev for dev in developers if dev.id == developer_id), None)
     if developer is None:
         raise HTTPException(status_code=404, detail="Developer not found")
     developers.remove(developer)
-    return {"message": "Developer deleted successfully"}
+    return {
+        "message": "Developer deleted successfully",
+        "total_developers": len(developers),
+    }
+
+# Put method to update a developer by id
+@app.put("/developers/{developer_id}")
+def update_developer(developer_id: int, updated_developer: Developer):
+    developer = next((dev for dev in developers if dev.id == developer_id), None)
+    if developer is None:
+        raise HTTPException(status_code=404, detail="Developer not found")
+
+    developer.name = updated_developer.name
+    developer.country = updated_developer.country
+    developer.age = updated_developer.age
+    developer.skills = updated_developer.skills
+    developer.experience = updated_developer.experience
+    developer.languages = updated_developer.languages
+
+    return developer
