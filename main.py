@@ -1,6 +1,7 @@
 from typing import Optional, List
 from urllib import response
 
+from models.Developer import Developer
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, status
 
@@ -139,15 +140,8 @@ def get_developer_languages(id: int):
         raise HTTPException(status_code=404, detail="Developer not found")
     return developer["languages"]
 
-class Developer(BaseModel):
-    id: int
-    name: str
-    country: str
-    age: int
-    skills: List[dict]
-    experience: List[dict]
-    languages: List[dict]
 
+# Post method to create a new developer
 
 @app.post("/developers")
 def create_developer(developer: Developer):
@@ -155,3 +149,13 @@ def create_developer(developer: Developer):
     developers.append(new_developer)
 
     return new_developer
+
+
+# Delete method to delete a developer by id
+@app.delete("/developers/{id}")
+def delete_developer(id: int):
+    developer = next((dev for dev in developers if dev["id"] == id), None)
+    if developer is None:
+        raise HTTPException(status_code=404, detail="Developer not found")
+    developers.remove(developer)
+    return {"message": "Developer deleted successfully"}
