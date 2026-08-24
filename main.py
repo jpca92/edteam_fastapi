@@ -1,18 +1,66 @@
+import os
 from typing import Optional
 
 from models.Developer import Developer
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import Depends, FastAPI, HTTPException, status, Request
 from fastapi.responses import PlainTextResponse
 
 from developers_data import developers_data
+from models.User import LoginRequest, UserResponse
+
+import jwt
 
 app = FastAPI()
+
+JWT_SECRET = os.getenv(
+    "JWT_SECRET",
+    "development-only-secret-change-before-production",
+)
+JWT_ALGORITHM = "HS256"
 
 developers: list[Developer] = [
     Developer.model_validate(developer) for developer in developers_data
 ]
 
-is_logged = False
+async def verify_token(request: Request):
+    authorization = request.headers.get("Authorization")
+
+    if authorization is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header missing",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    username = data.get("sub")
+    user = next((user for user in users if user["nombre"] == username), None)
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
 
 @app.middleware("http")
 async def my_middleware(request: Request, call_next):
@@ -22,24 +70,59 @@ async def my_middleware(request: Request, call_next):
     print("Después de la solicitud")
     return response
 
-@app.middleware('http')
-async def check_login(request: Request, call_next):
-    global is_logged
-    if request.url.path.startswith('/auth/login') or request.url.path.startswith('/login'):
-        response = await call_next(request)
-        return response
-
-    if not is_logged:
-        return PlainTextResponse('Inicie sesion por favor', status_code=status.HTTP_401_UNAUTHORIZED)
-
-    response = await call_next(request)
-    return response
-
 users = [
-    {"id":1,"nombre":"Juan", "apellido":"Perez", "edad": 30},
-    {"id":2,"nombre":"Maria", "apellido":"Gomez", "edad": 25},
-    {"id":3,"nombre":"Pedro", "apellido":"Lopez", "edad": 35},
+    {
+        "id": 1,
+        "nombre": "Juan",
+        "apellido": "Perez",
+        "edad": 30,
+        "password": "1234",
+    },
+    {
+        "id": 2,
+        "nombre": "Maria",
+        "apellido": "Gomez",
+        "edad": 25,
+        "password": "5678",
+    },
+    {
+        "id": 3,
+        "nombre": "Pedro",
+        "apellido": "Lopez",
+        "edad": 35,
+        "password": "9012",
+    },
 ]
+
+@app.post("/login_users")
+def login(credentials: LoginRequest):
+    user = next(
+        (
+            user for user in users
+            if user["nombre"] == credentials.username
+            and user["password"] == credentials.password
+        ),
+        None,
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
+    print("Inicio de sesión con usuario:", credentials.username, "Correcto")
+
+    token = jwt.encode(
+        {"sub": user["nombre"]},
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+    }
 
 @app.get('/')
 def mensaje():
@@ -48,19 +131,17 @@ def mensaje():
 
 @app.get('/login', response_class=PlainTextResponse)
 def mensaje():
-    global is_logged
-    is_logged = True
-    return 'Sesion iniciada'
+    return 'Inicie sesion'
 
 @app.get('/auth/login/users', response_class=PlainTextResponse)
 def mensaje():
     return 'Inicie sesion'
 
-@app.get('/users')
+@app.get('/users', response_model=list[UserResponse])
 def get_user():
     return users
 
-@app.get("/users/{user_id}")
+@app.get("/users/{user_id}", response_model=UserResponse)
 def get_user(user_id: int):
     user = next( (user for user in users if user["id"] == user_id), None)
 
@@ -70,7 +151,7 @@ def get_user(user_id: int):
     return user
 
 
-@app.get("/users/{user_id}/edad/{edad}")
+@app.get("/users/{user_id}/edad/{edad}", response_model=UserResponse)
 def get_user_age(user_id: int, edad: int):
     user = next( (user for user in users if user["id"] == user_id and user["edad"] == edad), None)
 
@@ -80,7 +161,7 @@ def get_user_age(user_id: int, edad: int):
     return user
 
 # Query Parameters
-@app.get("/users/{user_id}/by-age")
+@app.get("/users/{user_id}/by-age", response_model=UserResponse)
 def get_user_age_query(user_id: int, edad: int):
     user = next( (user for user in users if user["id"] == user_id and user["edad"] == edad), None)
 
@@ -90,7 +171,7 @@ def get_user_age_query(user_id: int, edad: int):
     return user
 
 # Query Parameters with and
-@app.get("/users_query/{user_id}")
+@app.get("/users_query/{user_id}", response_model=UserResponse)
 def get_user_by_age_and_name(user_id: int, edad: int, nombre: str):
     user = next( (user for user in users if user["id"] == user_id and user["edad"] == edad and user["nombre"] == nombre), None)
 
@@ -100,7 +181,7 @@ def get_user_by_age_and_name(user_id: int, edad: int, nombre: str):
     return user
 
 # Query Parameters with and and Optional
-@app.get("/users_query_fullname/{user_id}")
+@app.get("/users_query_fullname/{user_id}", response_model=UserResponse)
 def get_user_by_age_and_name_and_surname(user_id: int, edad: int, nombre: str, apellido: Optional[str]='Perez'):
     if not apellido:
         print("No se proporcionó apellido")
@@ -136,17 +217,25 @@ def division(numero1: int, numero2: int):
 
 # Capitulo 3
 @app.get("/developers")
-def get_developers():
+def get_developers(_: dict = Depends(verify_token)):
     return {
         "developers": developers,
         "total_developers": len(developers),
     }
 
 @app.get("/developers/{developer_id}")
-def get_developer(developer_id: int):
-    developer = next((dev for dev in developers if dev.id == developer_id), None)
+def get_developer(developer_id: int, _: dict = Depends(verify_token)):
+    developer = next(
+        (dev for dev in developers if dev.id == developer_id),
+        None,
+    )
+
     if developer is None:
-        raise HTTPException(status_code=404, detail="Developer not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Developer not found",
+        )
+
     return developer
 
 @app.get("/developers/{developer_id}/skills")
