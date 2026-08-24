@@ -1,7 +1,7 @@
 from typing import Optional
 
 from models.Developer import Developer
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import PlainTextResponse
 
 from developers_data import developers_data
@@ -11,6 +11,29 @@ app = FastAPI()
 developers: list[Developer] = [
     Developer.model_validate(developer) for developer in developers_data
 ]
+
+is_logged = False
+
+@app.middleware("http")
+async def my_middleware(request: Request, call_next):
+    print("Antes de la solicitud")
+    print(f'Accediendo a la ruta: {request.url.path}')
+    response = await call_next(request)
+    print("Después de la solicitud")
+    return response
+
+@app.middleware('http')
+async def check_login(request: Request, call_next):
+    global is_logged
+    if request.url.path.startswith('/auth/login') or request.url.path.startswith('/login'):
+        response = await call_next(request)
+        return response
+
+    if not is_logged:
+        return PlainTextResponse('Inicie sesion por favor', status_code=status.HTTP_401_UNAUTHORIZED)
+
+    response = await call_next(request)
+    return response
 
 users = [
     {"id":1,"nombre":"Juan", "apellido":"Perez", "edad": 30},
@@ -25,7 +48,9 @@ def mensaje():
 
 @app.get('/login', response_class=PlainTextResponse)
 def mensaje():
-    return 'Inicie sesion'
+    global is_logged
+    is_logged = True
+    return 'Sesion iniciada'
 
 @app.get('/auth/login/users', response_class=PlainTextResponse)
 def mensaje():
