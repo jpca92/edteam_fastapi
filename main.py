@@ -7,8 +7,10 @@ from fastapi import Depends, FastAPI, HTTPException, status, Request
 from fastapi.responses import PlainTextResponse
 
 from developers_data import developers_data
+from mongodb_client import users_collection
 from models.User import LoginRequest, UserResponse
 
+import bcrypt
 import jwt
 
 load_dotenv()
@@ -52,7 +54,7 @@ async def verify_token(request: Request):
         )
 
     username = data.get("sub")
-    user = next((user for user in users if user["nombre"] == username), None)
+    user = users_collection.find_one({"nombre": username})
 
     if user is None:
         raise HTTPException(
@@ -72,42 +74,17 @@ async def my_middleware(request: Request, call_next):
     print("Después de la solicitud")
     return response
 
-users = [
-    {
-        "id": 1,
-        "nombre": "Juan",
-        "apellido": "Perez",
-        "edad": 30,
-        "password": "1234",
-    },
-    {
-        "id": 2,
-        "nombre": "Maria",
-        "apellido": "Gomez",
-        "edad": 25,
-        "password": "5678",
-    },
-    {
-        "id": 3,
-        "nombre": "Pedro",
-        "apellido": "Lopez",
-        "edad": 35,
-        "password": "9012",
-    },
-]
-
+# ============================================================
+# MONGODB ATLAS: USER ENDPOINTS FOR TESTING
+# These routes read user data from the MongoDB users collection.
+# ============================================================
 @app.post("/login_users")
 def login(credentials: LoginRequest):
-    user = next(
-        (
-            user for user in users
-            if user["nombre"] == credentials.username
-            and user["password"] == credentials.password
-        ),
-        None,
-    )
+    user = users_collection.find_one({"nombre": credentials.username})
 
-    if user is None:
+    if user is None or not bcrypt.checkpw(
+        credentials.password.encode(), user["password_hash"].encode()
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
@@ -141,11 +118,14 @@ def mensaje():
 
 @app.get('/users', response_model=list[UserResponse])
 def get_user():
-    return users
+    return list(users_collection.find({}, {"_id": 0, "password_hash": 0}))
 
 @app.get("/users/{user_id}", response_model=UserResponse)
 def get_user(user_id: int):
-    user = next( (user for user in users if user["id"] == user_id), None)
+    user = users_collection.find_one(
+        {"id": user_id},
+        {"_id": 0, "password_hash": 0},
+    )
 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -155,7 +135,10 @@ def get_user(user_id: int):
 
 @app.get("/users/{user_id}/edad/{edad}", response_model=UserResponse)
 def get_user_age(user_id: int, edad: int):
-    user = next( (user for user in users if user["id"] == user_id and user["edad"] == edad), None)
+    user = users_collection.find_one(
+        {"id": user_id, "edad": edad},
+        {"_id": 0, "password_hash": 0},
+    )
 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -165,7 +148,10 @@ def get_user_age(user_id: int, edad: int):
 # Query Parameters
 @app.get("/users/{user_id}/by-age", response_model=UserResponse)
 def get_user_age_query(user_id: int, edad: int):
-    user = next( (user for user in users if user["id"] == user_id and user["edad"] == edad), None)
+    user = users_collection.find_one(
+        {"id": user_id, "edad": edad},
+        {"_id": 0, "password_hash": 0},
+    )
 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -175,7 +161,10 @@ def get_user_age_query(user_id: int, edad: int):
 # Query Parameters with and
 @app.get("/users_query/{user_id}", response_model=UserResponse)
 def get_user_by_age_and_name(user_id: int, edad: int, nombre: str):
-    user = next( (user for user in users if user["id"] == user_id and user["edad"] == edad and user["nombre"] == nombre), None)
+    user = users_collection.find_one(
+        {"id": user_id, "edad": edad, "nombre": nombre},
+        {"_id": 0, "password_hash": 0},
+    )
 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -187,16 +176,18 @@ def get_user_by_age_and_name(user_id: int, edad: int, nombre: str):
 def get_user_by_age_and_name_and_surname(user_id: int, edad: int, nombre: str, apellido: Optional[str]='Perez'):
     if not apellido:
         print("No se proporcionó apellido")
-    user = next( (user for user in users 
-                  if user["id"] == user_id 
-                  and user["edad"] == edad 
-                  and user["nombre"] == nombre 
-                  and (apellido is None or user["apellido"] == apellido)), None)
+    query = {"id": user_id, "edad": edad, "nombre": nombre}
+    if apellido is not None:
+        query["apellido"] = apellido
+    user = users_collection.find_one(query, {"_id": 0, "password_hash": 0})
 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
     return user
+# ============================================================
+# END OF MONGODB ATLAS USER ENDPOINTS
+# ============================================================
 
 @app.get('/welcome/{nombre}/{apellido}', response_class=PlainTextResponse)
 def mensaje_bienvenida(nombre: str, apellido: str):
