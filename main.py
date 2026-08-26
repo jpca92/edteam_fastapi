@@ -1,6 +1,7 @@
 import os
 from typing import Optional
 
+from dotenv import load_dotenv
 from models.Developer import Developer
 from fastapi import Depends, FastAPI, HTTPException, status, Request
 from fastapi.responses import PlainTextResponse
@@ -10,12 +11,13 @@ from models.User import LoginRequest, UserResponse
 
 import jwt
 
+load_dotenv()
+
 app = FastAPI()
 
-JWT_SECRET = os.getenv(
-    "JWT_SECRET",
-    "development-only-secret-change-before-production",
-)
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET no está configurado en el entorno")
 JWT_ALGORITHM = "HS256"
 
 developers: list[Developer] = [
